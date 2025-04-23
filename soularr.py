@@ -12,6 +12,7 @@ import operator
 import traceback
 import configparser
 import logging
+import random
 from datetime import datetime
 
 import music_tag
@@ -606,7 +607,30 @@ def get_records(missing: bool) -> list:
     total_wanted = wanted['totalRecords']
 
     wanted_records = []
-    if search_type == 'all':
+    if search_type == 'lucky_dip':
+        wanted = lidarr.get_wanted(page=1, page_size=99999999, sort_dir='ascending',sort_key='albums.title', missing=missing)
+        total_wanted = wanted['totalRecords']
+
+        logger.info(f"Searching for a random selection of {number_of_albums_to_grab} wanted albums out of {total_wanted} total wanted albums...")
+        wanted_records = random.sample(wanted['records'], min(number_of_albums_to_grab, total_wanted))
+
+        # remove results where albumType is "Single"
+        unwanted_singles = [record for record in wanted_records if record['albumType'] == 'Single']
+        for record in unwanted_singles:
+            logger.info(f"Skipping single: {record['title']} by {record['artist']['artistName']}")
+
+        # remove results where albumArtist is "Various Artists"
+        unwanted_artists = [record for record in wanted_records if record['artist']['artistName'] == 'Various Artists']
+        for record in unwanted_artists:
+            logger.info(f"Skipping Various Artists: {record['title']} by {record['artist']['artistName']}")
+
+        wanted_records = [record for record in wanted_records if record['artist']['artistName'] != 'Various Artists' and record['albumType'] != 'Single']
+
+        logger.info(f"Resultant list of wanted records: ")
+        for record in wanted_records:
+            logger.info(f"Resultant: {record['title']} by {record['artist']['artistName']} - albumType: {record['albumType']}")
+
+    elif search_type == 'all':
         page = 1
         while len(wanted_records) < total_wanted:
             try:
@@ -715,7 +739,8 @@ try:
         search_sources = ['missing', 'cutoff_unmet']
 
     minimum_match_ratio = config.getfloat('Search Settings', 'minimum_filename_match_ratio', fallback=0.5)
-    page_size = config.getint('Search Settings', 'number_of_albums_to_grab', fallback=10)
+    number_of_albums_to_grab = config.getint('Search Settings', 'number_of_albums_to_grab', fallback=10)
+    page_size = number_of_albums_to_grab
     remove_wanted_on_failure = config.getboolean('Search Settings', 'remove_wanted_on_failure', fallback=True)
 
     use_most_common_tracknum = config.getboolean('Release Settings', 'use_most_common_tracknum', fallback=True)
